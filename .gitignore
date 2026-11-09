@@ -1,0 +1,9 @@
+# Cấu hình local và secrets
+.env
+.env.*
+!.env.example
+
+# Môi trường Python và cache
+.venv/
+venv/
+__pycache__/

@@ -1,0 +1,6 @@
+ipykernel
+dotenv
+
+fastapi
+pydantic
+sqlalchemy
