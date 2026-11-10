@@ -1,0 +1,9 @@
+python-dotenv
+dataclasses
+fastapi
+uvicorn
+pydantic
+langchain-openai
+langchain-core
+sqlalchemy
+psycopg[binary]
