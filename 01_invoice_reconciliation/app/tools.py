@@ -1,5 +1,7 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
+from langchain_core import tool
+
 from uuid import uuid4 # For create Proposal.id
 
 from .model_db import Invoice, Transfer, Proposal
@@ -102,3 +104,30 @@ def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
     db.commit()
 
     return {"proposal_id": proposal_id}
+
+def build_tools(session_factory: sessionmaker[Session]):
+    @tool("get_open_invoice")
+    def read_invoice(invoice_id: str) -> dict:
+        """Tra hóa đơn theo mã và trả khách hàng, tiền tệ, số tiền thiếu và trạng thái."""
+        with session_factory() as db:
+            return get_open_invoice(invoice_id, db)
+
+    @tool("list_unmatched_transfers")
+    def list_transfers(customer_id: str, currency: str) -> list[str]:
+        """Liệt kê mã giao dịch chưa ghép có số tiền dương của khách theo loại tiền."""
+        with session_factory() as db:
+            return list_unmatched_transfers(customer_id, currency, db)
+
+    @tool("find_two_transfer_match")
+    def find_match(invoice_id: str) -> list[str] | dict:
+        """Tìm hai giao dịch cộng đúng số tiền còn thiếu của hóa đơn."""
+        with session_factory() as db:
+            return find_two_transfer_match(invoice_id, db)
+
+    @tool("propose_invoice_match")
+    def propose_match(invoice_id: str, transfer_ids: list[str]) -> dict:
+        """Lưu bản nháp đối soát với đúng hai mã giao dịch khi người dùng yêu cầu."""
+        with session_factory() as db:
+            return propose_invoice_match(invoice_id, transfer_ids, db)
+
+    return [read_invoice, list_transfers, find_match, propose_match]
