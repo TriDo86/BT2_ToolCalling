@@ -6,6 +6,6 @@ def two_sum(target: int, nums: list) -> tuple:
         if missing_value in missing_dict:
             return (missing_dict.get(missing_value), i)
 
-        missing_dict[n] = i
+        missing_dict.setdefault(n, i)
 
     return (None, None)

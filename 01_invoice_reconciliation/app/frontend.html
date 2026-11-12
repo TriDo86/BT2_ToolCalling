@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Đối soát hóa đơn</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: clamp(20px, 6vw, 64px) 16px;
+            background: #f3f6fa;
+            color: #18263a;
+            font: 16px/1.55 Inter, system-ui, sans-serif;
+        }
+        main { max-width: 720px; margin: 0 auto; }
+        h1 { margin: 0 0 24px; font-size: clamp(28px, 5vw, 38px); }
+        h2 { margin: 0; font-size: 18px; }
+        .panel {
+            padding: clamp(16px, 4vw, 28px);
+            border: 1px solid #dbe3ee;
+            border-radius: 14px;
+            background: #fff;
+        }
+        label, summary { font-weight: 600; }
+        textarea {
+            display: block;
+            width: 100%;
+            margin: 8px 0 16px;
+            padding: 12px;
+            resize: vertical;
+            border: 1px solid #a9b8cc;
+            border-radius: 8px;
+            color: inherit;
+            font: inherit;
+        }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+        button {
+            min-height: 44px;
+            padding: 8px 16px;
+            border: 1px solid #194eb4;
+            border-radius: 8px;
+            background: #194eb4;
+            color: #fff;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button.secondary { background: #fff; color: #194eb4; }
+        button:disabled { opacity: .6; cursor: wait; }
+        :focus-visible { outline: 3px solid #1963cf; outline-offset: 3px; }
+        #status { color: #40536c; }
+        #status:empty { margin: 0; }
+        #status[data-error="true"] { color: #a1261d; }
+        #response { margin-top: 16px; }
+        #records { margin-top: 16px; }
+        .records-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+        .table-section { margin-top: 20px; }
+        h3 { margin: 0 0 8px; font-size: 16px; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 8px; border-bottom: 1px solid #dbe3ee; text-align: left; white-space: nowrap; }
+        th { background: #f3f6fa; }
+        .records-note, #records-status { color: #40536c; font-size: 14px; }
+        #records-status:empty { margin: 0; }
+        #answer { white-space: pre-wrap; overflow-wrap: anywhere; }
+        summary { cursor: pointer; }
+        pre {
+            margin-bottom: 0;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f3f6fa;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Đối soát hóa đơn</h1>
+        <form class="panel" id="chat-form">
+            <label for="question">Câu hỏi</label>
+            <textarea id="question" rows="3" maxlength="4000" required>Tìm hai khoản chuyển cho hóa đơn I-77</textarea>
+            <div class="actions">
+                <button id="send" type="submit">Gửi câu hỏi</button>
+                <button id="demo" class="secondary" type="button">Thử demo I-77</button>
+            </div>
+            <p id="status" role="status" aria-live="polite"></p>
+        </form>
+
+        <section class="panel" id="response" aria-labelledby="result-title" hidden>
+            <h2 id="result-title">Kết quả</h2>
+            <p id="answer"></p>
+            <details open>
+                <summary>Lịch sử gọi tool</summary>
+                <pre id="trace"></pre>
+            </details>
+        </section>
+
+        <section class="panel" id="records" aria-labelledby="records-title">
+            <div class="records-heading">
+                <h2 id="records-title">Dữ liệu đối soát</h2>
+                <button id="refresh-records" class="secondary" type="button">Tải lại dữ liệu</button>
+            </div>
+            <p class="records-note">Số tiền tính theo đơn vị nhỏ nhất của từng loại tiền.</p>
+            <p id="records-status" role="status"></p>
+
+            <div class="table-section">
+                <h3 id="invoices-title">Hóa đơn</h3>
+                <div class="table-scroll" tabindex="0" role="region" aria-labelledby="invoices-title">
+                    <table aria-labelledby="invoices-title">
+                        <thead><tr><th scope="col">Mã</th><th scope="col">Khách</th><th scope="col">Tiền tệ</th><th scope="col">Tổng tiền</th><th scope="col">Còn thiếu</th></tr></thead>
+                        <tbody id="invoice-rows"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-section">
+                <h3 id="transfers-title">Giao dịch</h3>
+                <div class="table-scroll" tabindex="0" role="region" aria-labelledby="transfers-title">
+                    <table aria-labelledby="transfers-title">
+                        <thead><tr><th scope="col">Mã</th><th scope="col">Thời điểm nhận</th><th scope="col">Khách</th><th scope="col">Tiền tệ</th><th scope="col">Số tiền</th><th scope="col">Trạng thái</th></tr></thead>
+                        <tbody id="transfer-rows"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-section">
+                <h3 id="proposals-title">Đề xuất</h3>
+                <div class="table-scroll" tabindex="0" role="region" aria-labelledby="proposals-title">
+                    <table aria-labelledby="proposals-title">
+                        <thead><tr><th scope="col">Mã đề xuất</th><th scope="col">Hóa đơn</th><th scope="col">Giao dịch 1</th><th scope="col">Giao dịch 2</th></tr></thead>
+                        <tbody id="proposal-rows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const form = document.querySelector('#chat-form');
+        const question = document.querySelector('#question');
+        const sendButton = document.querySelector('#send');
+        const demoButton = document.querySelector('#demo');
+        const status = document.querySelector('#status');
+        const response = document.querySelector('#response');
+        const answer = document.querySelector('#answer');
+        const trace = document.querySelector('#trace');
+        const refreshRecords = document.querySelector('#refresh-records');
+        const recordsStatus = document.querySelector('#records-status');
+        const formatAmount = new Intl.NumberFormat('vi-VN');
+        let recordsRequest = 0;
+
+        function showStatus(message, isError = false) {
+            status.textContent = message;
+            status.dataset.error = String(isError);
+        }
+
+        function showResponse(data) {
+            answer.textContent = data.answer;
+            trace.textContent = data.trace?.length
+                ? JSON.stringify(data.trace, null, 2)
+                : 'Không có lần gọi tool nào.';
+            response.hidden = false;
+        }
+
+        function showRows(id, rows, emptyMessage) {
+            const body = document.querySelector(id);
+            body.replaceChildren();
+
+            for (const values of rows) {
+                const row = body.insertRow();
+                for (const value of values) {
+                    row.insertCell().textContent = value;
+                }
+            }
+
+            if (rows.length === 0) {
+                const cell = body.insertRow().insertCell();
+                cell.colSpan = body.closest('table').tHead.rows[0].cells.length;
+                cell.textContent = emptyMessage;
+            }
+        }
+
+        async function loadRecords() {
+            const request = ++recordsRequest;
+            refreshRecords.disabled = true;
+            recordsStatus.textContent = 'Đang tải dữ liệu…';
+
+            try {
+                const httpResponse = await fetch('/api/records', { cache: 'no-store' });
+                if (!httpResponse.ok) {
+                    throw new Error(`HTTP ${httpResponse.status}`);
+                }
+
+                const data = await httpResponse.json();
+                if (request !== recordsRequest) return;
+
+                showRows('#invoice-rows', data.invoices.map(item => [
+                    item.id, item.customer_id, item.currency,
+                    formatAmount.format(item.total_amount), formatAmount.format(item.missing_amount),
+                ]), 'Chưa có hóa đơn.');
+                showRows('#transfer-rows', data.transfers.map(item => [
+                    item.id, item.received_at.replace('T', ' '), item.customer_id, item.currency,
+                    formatAmount.format(item.amount), item.status ? 'Đã ghép' : 'Chưa ghép',
+                ]), 'Chưa có giao dịch.');
+                showRows('#proposal-rows', data.proposals.map(item => [
+                    item.id, item.invoice_id, item.transfer_id1, item.transfer_id2,
+                ]), 'Chưa có đề xuất.');
+                recordsStatus.textContent = '';
+            } catch {
+                if (request === recordsRequest) {
+                    recordsStatus.textContent = 'Không tải được dữ liệu. Bấm Tải lại dữ liệu để thử lại.';
+                }
+            } finally {
+                if (request === recordsRequest) {
+                    refreshRecords.disabled = false;
+                }
+            }
+        }
+
+        async function sendRequest(url, body) {
+            sendButton.disabled = true;
+            demoButton.disabled = true;
+            response.hidden = true;
+            showStatus('Đang chờ phản hồi từ backend…');
+
+            try {
+                const httpResponse = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+
+                const data = await httpResponse.json();
+                if (!httpResponse.ok) {
+                    const detail = typeof data.detail === 'string' ? data.detail : `HTTP ${httpResponse.status}`;
+                    showStatus(detail, true);
+                    return;
+                }
+
+                showResponse(data);
+                const hasError = data.status && data.status !== 'ok';
+                showStatus(hasError ? `Backend báo lỗi (${data.status}).` : 'Đã nhận phản hồi từ backend.', hasError);
+
+                if (data.trace?.some(entry => entry.name === 'propose_invoice_match' && entry.result?.proposal_id)) {
+                    await loadRecords();
+                }
+            } catch {
+                showStatus('Không đọc được phản hồi từ backend. Kiểm tra FastAPI rồi thử lại.', true);
+            } finally {
+                sendButton.disabled = false;
+                demoButton.disabled = false;
+            }
+        }
+
+        demoButton.addEventListener('click', () => sendRequest('/api/demo/I-77'));
+        refreshRecords.addEventListener('click', loadRecords);
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = question.value.trim();
+
+            if (!message) {
+                showStatus('Nhập câu hỏi trước khi gửi.', true);
+                question.focus();
+                return;
+            }
+
+            return sendRequest('/api/chat', { message });
+        });
+
+        loadRecords();
+    </script>
+</body>
+</html>

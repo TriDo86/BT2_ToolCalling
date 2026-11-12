@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
-from langchain_core import tool
+from langchain_core.tools import tool
 
 from uuid import uuid4 # For create Proposal.id
 
@@ -27,29 +27,39 @@ def list_unmatched_transfers(customer_id: str, currency: str, db: Session) -> li
             Transfer.customer_id == customer_id,
             Transfer.currency == currency,
             Transfer.status.is_(False),
+            Transfer.amount > 0,
         )
         .order_by(Transfer.received_at, Transfer.id)
     )
     return db.scalars(query).all()
 
-def find_two_transfer_match(invoice_id, db: Session) -> tuple:
+def find_two_transfer_match(invoice_id: str, db: Session) -> list[str] | dict:
     invoice = db.get(Invoice, invoice_id)
 
     if invoice is None:
         return {"error": "invoice_not_found", "invoice_id": invoice_id}
 
-    query = select(Transfer.id, Transfer.amount).where(
-        Transfer.customer_id == invoice.customer_id, 
-        Transfer.currency == invoice.currency,
-        Transfer.status.is_(False))
+    if invoice.missing_amount <= 0:
+        return {"error": "invoice_paid", "invoice_id": invoice_id}
+
+    query = (
+        select(Transfer.id, Transfer.amount)
+        .where(
+            Transfer.customer_id == invoice.customer_id,
+            Transfer.currency == invoice.currency,
+            Transfer.status.is_(False),
+            Transfer.amount > 0,
+        )
+        .order_by(Transfer.received_at, Transfer.id)
+    )
     transfers = db.execute(query).all()
 
     t1, t2 = two_sum(invoice.missing_amount, [amount for _, amount in transfers])
 
-    if t1 == None:
-        return (None, None)
+    if t1 is None or t2 is None:
+        return {"status": "no_match", "invoice_id": invoice_id}
 
-    return transfers[t1], transfers[t2]
+    return [transfers[t1].id, transfers[t2].id]
 
 def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
     invoice = db.get(Invoice, invoice_id)
@@ -96,7 +106,7 @@ def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
         return {"error": "transfer_not_eligible", "transfer_id": t2.id}
 
     if t1.amount + t2.amount != invoice.missing_amount:
-        return {{"error": "transfer_sum_is_not_missing_amount"}}
+        return {"error": "amount_mismatch"}
 
     proposal_id = str(uuid4())
 
