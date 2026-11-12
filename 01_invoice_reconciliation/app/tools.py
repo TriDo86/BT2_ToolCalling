@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from uuid import uuid4 # For create Proposal.id
 
 from .model_db import Invoice, Transfer, Proposal
 from .algorithm import two_sum
@@ -30,18 +31,18 @@ def list_unmatched_transfers(customer_id: str, currency: str, db: Session) -> li
     return db.scalars(query).all()
 
 def find_two_transfer_match(invoice_id, db: Session) -> tuple:
-    invoice = get_open_invoice(invoice_id, db)
+    invoice = db.get(Invoice, invoice_id)
 
-    if invoice.get("error"):
-        return None
+    if invoice is None:
+        return {"error": "invoice_not_found", "invoice_id": invoice_id}
 
     query = select(Transfer.id, Transfer.amount).where(
-        Transfer.customer_id == invoice["customer_id"], 
-        Transfer.currency == invoice["currency"],
+        Transfer.customer_id == invoice.customer_id, 
+        Transfer.currency == invoice.currency,
         Transfer.status.is_(False))
     transfers = db.execute(query).all()
 
-    t1, t2 = two_sum(invoice["total_amount"], [t.right for t in transfers])
+    t1, t2 = two_sum(invoice.missing_amount, [amount for _, amount in transfers])
 
     if t1 == None:
         return (None, None)
@@ -56,6 +57,9 @@ def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
     if invoice.missing_amount <= 0:
         return {"error": "invoice_fullfilled", "invoice_id": invoice_id}
 
+    if len(transfer_ids) != 2:
+        return {"error": "len_transfer_ids_must_be_2", "current_length": len(transfer_ids)}
+
     if transfer_ids[0] == transfer_ids[1]:
         return {"error": "same_transfer", "transfer_ids": transfer_ids}
 
@@ -63,7 +67,7 @@ def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
 
     if t1 is None:
         return {"error": "transfer_not_found", "transfer_id": transfer_ids[0]}
-
+    
     if t1.status == True:
         return {"error": "transfer_is_matched", "transfer_id": transfer_ids[0]} 
 
@@ -71,11 +75,30 @@ def propose_invoice_match(invoice_id: str, transfer_ids: tuple, db: Session):
 
     if t2 is None:
         return {"error": "transfer_not_found", "transfer_id": transfer_ids[1]}
-
+    
     if t2.status == True:
         return {"error": "transfer_is_matched", "transfer_id": transfer_ids[1]} 
 
-    db.add(Proposal(invoice_id=invoice_id, transfer_id1=t1.id, transfer_id2=t2.id))
+    if (
+        t1.customer_id != invoice.customer_id
+        or t1.currency != invoice.currency
+        or t1.amount <= 0
+    ):
+        return {"error": "transfer_not_eligible", "transfer_id": t1.id}
+    
+    if (
+        t2.customer_id != invoice.customer_id
+        or t2.currency != invoice.currency
+        or t2.amount <= 0
+    ):
+        return {"error": "transfer_not_eligible", "transfer_id": t2.id}
+
+    if t1.amount + t2.amount != invoice.missing_amount:
+        return {{"error": "transfer_sum_is_not_missing_amount"}}
+
+    proposal_id = str(uuid4())
+
+    db.add(Proposal(id=proposal_id, invoice_id=invoice_id, transfer_id1=t1.id, transfer_id2=t2.id))
     db.commit()
 
-    return
+    return {"proposal_id": proposal_id}
