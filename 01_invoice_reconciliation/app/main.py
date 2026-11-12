@@ -19,7 +19,8 @@ from .model_db import Invoice, Proposal, Transfer
 from .tools import build_tools
 
 MAX_TOOL_ROUNDS = 4
-TRACE_FILE = Path(__file__).resolve().parents[1] / "chat_trace.jsonl"
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+TRACE_FILE = PROJECT_DIR / "chat_trace.jsonl"
 trace_lock = Lock()
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(Path(__file__).with_name("frontend.html"))
+        return FileResponse(PROJECT_DIR / "frontend" / "index.html")
 
     @app.get("/api/health")
     def health():
