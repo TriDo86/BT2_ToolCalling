@@ -31,3 +31,12 @@ class Transfer(Base):
     currency: Mapped[str] = mapped_column(String(3))
     amount: Mapped[Integer] = mapped_column(Integer)
     status: Mapped[bool] = mapped_column(Boolean)
+
+
+class Proposal(Base):
+    __tablename__ = "proposal"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoice.id"))
+    transfer_id1: Mapped[str] = mapped_column(ForeignKey("transfer.id"))
+    transfer_id2: Mapped[str] = mapped_column(ForeignKey("transfer.id"))
